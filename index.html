@@ -4,14 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="style.css">
+    <!-- p5 and ml5 are UMD globals: load them BEFORE the module graph. -->
     <script src="https://cdn.jsdelivr.net/npm/p5@2.3.3/lib/p5.min.js"></script>
-    <script src="js/gamelogic.js"></script>
-    <script src="js/handpose.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="sketch.js"></script>
-    <title>Document</title>
+    <script src="https://cdn.jsdelivr.net/npm/ml5@1.4.0/dist/ml5.min.js"></script>
+    <!-- type="module" is deferred: runs after the two UMD scripts above. -->
+    <script type="module" src="sketch.js"></script>
+    <title>Hand Pose</title>
 </head>
 <body>
-    
 </body>
 </html>
