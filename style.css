@@ -1,0 +1,77 @@
+/* ==========================================================================
+   CSS Reset
+   ========================================================================== */
+
+/* Box model: sizing includes padding and borders */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Remove default spacing */
+* {
+  margin: 0;
+  padding: 0;
+}
+
+/* Respect user font-size preferences and improve text rendering */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Replace media elements' default baseline alignment */
+img,
+picture,
+video,
+canvas,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Forms inherit typography instead of using browser defaults */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Allow long words to wrap instead of overflowing */
+p,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  overflow-wrap: break-word;
+}
+
+/* Remove default list styling when a list is used for navigation */
+ul[role="list"],
+ol[role="list"] {
+  list-style: none;
+}
+
+/* Remove default button appearance */
+button {
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* Remove default table spacing */
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
