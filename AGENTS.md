@@ -27,7 +27,15 @@ Dependency rules (violating these is what breaks parallel work):
 - `handpose.js` never knows game rules or game UI.
 - `ui.js` and `gamelogic.js` never import each other; data flows through parameters from `sketch.js`.
 
-Frame order in `draw`: `tracker.getHands()` → `game.update(hands, deltaTime)` → `ui.draw(...)` → `tracker.drawSkeleton()` (skeleton last, on top).
+Frame order in `draw`: `background(0)` → `tracker.drawVideo()` → `ui.draw(...)` → `tracker.drawSkeleton()` (skeleton last, on top). `ui.draw` never clears the canvas; the composition root owns the background.
+
+## Camera viewport
+
+- `HandTracker` maps the camera to the canvas with a single **cover** fit (uniform scale, centered, equal crop on both sides) computed in `#viewport()`. Both `drawVideo()` and `drawSkeleton()` use it, so landmarks sit exactly on the real joints.
+- `tracker.toScreen({x, y})` exposes the same mapping for game/UI code. Never re-derive it.
+- The capture requests 1280×720 ideals; the stream's real size comes from `elt.videoWidth/videoHeight`, which is what normalization uses. Do not normalize by the requested size — browsers ignore constraints.
+- `showVideo` (default `true` in the class) draws the camera behind the skeleton for debugging. `sketch.js` currently passes `showVideo: false`, so only the skeleton is visible. Flip that one flag to debug again.
+- The webcam element is always `hide()`den; we draw the stream ourselves. Never append the raw element to the page.
 
 ## HandPose contract (do not break without telling the team)
 
@@ -39,8 +47,8 @@ Landmark = { x: 0..1, y: 0..1, z: relative depth }
 ```
 
 - 21 landmarks in MediaPipe order; use the exported `LANDMARK` constants, not raw indices.
-- x/y are normalized to the video frame and **not mirrored**. Mirroring happens only at draw time (`HandTracker.mirrored`).
-- The webcam element stays `hide()`den: only the stick-figure skeleton is ever drawn. Do not add `image(video, ...)`.
+- x/y are normalized to the video frame and **not mirrored**. Mirroring happens only at draw time (`HandTracker.mirrored`) and is applied identically to the video and the skeleton.
+- `createCapture()` does not expose its `getUserMedia` promise. `init()` waits on `loadedmetadata` with a 10s timeout and throws a readable error instead of hanging forever.
 
 ## Current state
 

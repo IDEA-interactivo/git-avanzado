@@ -3,6 +3,8 @@
  *
  * Rules:
  *  - Reads GameState, draws it. Never mutates it, never computes game rules.
+ *  - Does NOT clear the canvas: the composition root owns the background and the
+ *    camera view, so this is a transparent overlay.
  *  - The hand skeleton is NOT drawn here: that is the sensor's own visualization
  *    (HandTracker.drawSkeleton), so the handpose owner can work independently.
  *
@@ -22,7 +24,6 @@ export class Renderer {
   draw(state, tracker) {
     const { p } = this;
 
-    p.background(0);
     p.push();
     p.noStroke();
     p.textFont("monospace");
@@ -57,6 +58,11 @@ export class Renderer {
     );
     p.fill(160);
     p.text(`fps: ${p.frameRate().toFixed(0)}`, 16, 60);
+    p.text(
+      `video ${tracker.videoWidth}x${tracker.videoHeight}  canvas ${p.width}x${p.height}`,
+      16,
+      82,
+    );
 
     p.pop();
   }

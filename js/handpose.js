@@ -2,11 +2,13 @@
  * HandTracker — input adapter.
  *
  * Owns ml5.js and the webcam. It produces normalized hand data and draws the
- * stick-figure skeleton. It knows nothing about game rules or game UI.
+ * camera view plus the stick-figure skeleton. It knows nothing about game rules
+ * or game UI.
  *
  * Contract with the rest of the app (do not break it without telling the team):
  *
- *   tracker.getHands() -> Hand[]
+ *   tracker.getHands()   -> Hand[]
+ *   tracker.toScreen(lm) -> {x, y}   maps a normalized landmark to canvas pixels
  *
  *   Hand = {
  *     handedness: "Left" | "Right" | "Unknown",
@@ -19,7 +21,7 @@
  *     z is relative depth in the same scale as x (not normalized, sign = toward camera).
  *
  * Coordinates are NOT mirrored: x grows to the right of the raw camera image.
- * Mirroring is a presentation concern and only happens in drawSkeleton().
+ * Mirroring is a presentation concern and only happens when drawing.
  */
 
 /** MediaPipe hand landmark order. Use these instead of magic numbers. */
@@ -76,12 +78,24 @@ export class HandTracker {
    * @param {p5} p p5 instance (instance mode).
    * @param {object} [options]
    * @param {number} [options.maxHands=2]
-   * @param {boolean} [options.mirrored=true] Draw the skeleton mirrored, as a mirror would.
+   * @param {boolean} [options.mirrored=true] Mirror the camera view and skeleton, like a mirror.
+   * @param {boolean} [options.showVideo=true] Draw the camera image behind the skeleton (debug view).
+   * @param {number} [options.videoWidth=1280] Ideal capture width.
+   * @param {number} [options.videoHeight=720] Ideal capture height.
    */
-  constructor(p, { maxHands = 2, mirrored = true } = {}) {
+  constructor(p, {
+    maxHands = 2,
+    mirrored = true,
+    showVideo = true,
+    videoWidth = 1280,
+    videoHeight = 720,
+  } = {}) {
     this.p = p;
     this.maxHands = maxHands;
     this.mirrored = mirrored;
+    this.showVideo = showVideo;
+    this.requestedWidth = videoWidth;
+    this.requestedHeight = videoHeight;
 
     this.video = null;
     this.model = null;
@@ -109,18 +123,43 @@ export class HandTracker {
       modelType: "full",
     });
 
-    this.video = this.p.createCapture(this.p.VIDEO);
-    this.video.size(640, 480);
-    this.video.hide(); // Never render the camera feed: only the skeleton is drawn.
+    this.video = this.p.createCapture({
+      video: {
+        width: { ideal: this.requestedWidth },
+        height: { ideal: this.requestedHeight },
+      },
+      audio: false,
+    });
+    this.video.hide(); // The element stays out of the layout; we draw it ourselves.
 
-    await new Promise((resolve) => {
+    await new Promise((resolve, reject) => {
       const elt = this.video.elt;
       if (elt.readyState >= 1) return resolve();
-      elt.onloadedmetadata = () => resolve();
+
+      // createCapture() does not expose its getUserMedia promise: if permission is
+      // denied or the device is missing, 'loadedmetadata' never fires. Fail loudly
+      // instead of showing "Starting camera..." forever.
+      const timer = setTimeout(() => {
+        reject(
+          new Error(
+            "Camera did not start. Allow camera access and serve the page over http://localhost or HTTPS.",
+          ),
+        );
+      }, 10000);
+
+      elt.addEventListener(
+        "loadedmetadata",
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
     });
 
-    this.videoWidth = this.video.elt.videoWidth || 640;
-    this.videoHeight = this.video.elt.videoHeight || 480;
+    // Use the stream's real size, not the size we asked for: browsers may ignore it.
+    this.videoWidth = this.video.elt.videoWidth || this.requestedWidth;
+    this.videoHeight = this.video.elt.videoHeight || this.requestedHeight;
 
     this.model.detectStart(this.video, (results) => {
       this.hands = results.map((hand) => this.#normalize(hand));
@@ -135,23 +174,51 @@ export class HandTracker {
   }
 
   /**
-   * Draws the skeleton as sticks with circles at the joints.
-   * This is the sensor's own visualization, not game UI.
+   * Maps a normalized landmark (or any {x, y} in 0..1 video space) to canvas
+   * pixels, applying the same cover fit and mirroring used when drawing.
+   * Use this from game/UI code instead of duplicating the math.
+   * @returns {{x: number, y: number}}
    */
-  drawSkeleton() {
-    if (!this.ready || !this.videoWidth) return;
+  toScreen(point) {
+    const view = this.#viewport();
+    if (!view) return { x: 0, y: 0 };
+    return {
+      x: view.ox + (this.mirrored ? 1 - point.x : point.x) * view.dw,
+      y: view.oy + point.y * view.dh,
+    };
+  }
+
+  /**
+   * Draws the camera image, scaled to COVER the whole canvas and centered
+   * (equal crop on both sides), mirrored when `mirrored` is true.
+   * No-op when `showVideo` is false.
+   */
+  drawVideo() {
+    const view = this.#viewport();
+    if (!this.showVideo || !this.ready || !view) return;
 
     const { p } = this;
-    const scale = Math.max(p.width / this.videoWidth, p.height / this.videoHeight); // cover
-    const dw = this.videoWidth * scale;
-    const dh = this.videoHeight * scale;
-    const ox = (p.width - dw) / 2;
-    const oy = (p.height - dh) / 2;
+    p.push();
+    p.noStroke();
+    if (this.mirrored) {
+      p.translate(p.width, 0);
+      p.scale(-1, 1);
+      p.image(this.video, p.width - view.ox - view.dw, view.oy, view.dw, view.dh);
+    } else {
+      p.image(this.video, view.ox, view.oy, view.dw, view.dh);
+    }
+    p.pop();
+  }
 
-    const toScreen = (lm) => ({
-      x: ox + (this.mirrored ? 1 - lm.x : lm.x) * dw,
-      y: oy + lm.y * dh,
-    });
+  /**
+   * Draws the skeleton as sticks with circles at the joints, using exactly the
+   * same viewport as drawVideo so landmarks sit on top of the real joints.
+   */
+  drawSkeleton() {
+    const view = this.#viewport();
+    if (!this.ready || !view) return;
+
+    const { p } = this;
 
     p.push();
     p.noFill();
@@ -159,7 +226,7 @@ export class HandTracker {
     for (let h = 0; h < this.hands.length; h++) {
       const hand = this.hands[h];
       const color = HAND_COLORS[h % HAND_COLORS.length];
-      const points = hand.landmarks.map(toScreen);
+      const points = hand.landmarks.map((lm) => this.toScreen(lm));
 
       // Bones
       p.stroke(...color);
@@ -185,6 +252,19 @@ export class HandTracker {
     }
 
     p.pop();
+  }
+
+  /**
+   * Cover fit: same scale on both axes (proportions preserved), video centered,
+   * overflow cropped equally. Recomputed every frame so resizing works.
+   */
+  #viewport() {
+    if (!this.videoWidth || !this.videoHeight) return null;
+    const { width, height } = this.p;
+    const scale = Math.max(width / this.videoWidth, height / this.videoHeight);
+    const dw = this.videoWidth * scale;
+    const dh = this.videoHeight * scale;
+    return { dw, dh, ox: (width - dw) / 2, oy: (height - dh) / 2, scale };
   }
 
   #normalize(hand) {

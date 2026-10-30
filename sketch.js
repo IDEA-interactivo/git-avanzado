@@ -22,7 +22,7 @@ new p5((p) => {
   p.setup = async () => {
     p.createCanvas(p.windowWidth, p.windowHeight);
 
-    tracker = new HandTracker(p, { maxHands: 2, mirrored: true });
+    tracker = new HandTracker(p, { maxHands: 2, mirrored: true, showVideo: false });
     game = new GameState();
     ui = new Renderer(p);
 
@@ -40,6 +40,9 @@ new p5((p) => {
     const hands = tracker.getHands();
     game.update(hands, p.deltaTime);
 
+    // Back to front: clear -> raw sensor view -> HUD -> skeleton.
+    p.background(0);
+    tracker.drawVideo();
     ui.draw(game, tracker);
     tracker.drawSkeleton();
   };
